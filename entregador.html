@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Entregador · Brasiliana Pizzaria (demonstração)</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;background:#f4f1ea;color:#1c2420;padding:14px 14px 40px}
+  .demo{background:#8f0d0d;color:#fff;text-align:center;font-size:12.5px;font-weight:700;letter-spacing:.04em;padding:8px 10px;border-radius:10px;margin-bottom:12px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  h1{font-size:23px;letter-spacing:-.01em}
+  .sub{color:#5c665f;font-size:14px;margin-bottom:14px}
+  #refresh{background:#0d4a45;color:#fff;border:none;border-radius:999px;padding:11px 18px;font-size:15px;font-weight:700;cursor:pointer}
+  #refresh:active{transform:scale(.97)}
+  .card{background:#fff;border:1.5px solid #ddd5c6;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(30,30,20,.06)}
+  .nome{font-size:21px;font-weight:800;margin-bottom:2px}
+  .hora{display:inline-block;background:#fdf0d5;color:#8a6414;font-weight:700;font-size:13.5px;border-radius:999px;padding:3px 10px;margin:4px 0 8px}
+  .end{font-size:17.5px;line-height:1.45;margin:6px 0 4px}
+  .itens{font-size:15.5px;line-height:1.55;color:#333}
+  .obs{font-size:14.5px;color:#8f0d0d;margin-top:4px}
+  .total{font-size:19px;font-weight:800;margin-top:8px}
+  .acoes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .btn{display:block;text-align:center;text-decoration:none;border:none;border-radius:12px;padding:14px 8px;font-size:16.5px;font-weight:800;cursor:pointer}
+  .btn-mapa{background:#eef3f1;color:#0d4a45;border:1.5px solid #0d4a45}
+  .btn-tel{background:#eef3f1;color:#0d4a45;border:1.5px solid #0d4a45}
+  .btn-entregue{grid-column:1/-1;background:#12805c;color:#fff;font-size:19px;padding:17px 8px}
+  .btn-entregue.armado{background:#d21a1a}
+  .btn-entregue:disabled{opacity:.55}
+  .vazio{background:#fff;border:1.5px dashed #c9c0ab;border-radius:16px;padding:28px 18px;text-align:center;font-size:16.5px;color:#5c665f}
+  .feitos{margin-top:22px}
+  .feitos h2{font-size:16px;color:#5c665f;margin-bottom:8px}
+  .feito{background:#e9f5ee;border:1px solid #bfe3cf;border-radius:12px;padding:10px 14px;font-size:15px;margin-bottom:8px}
+  .erro{background:#fdecec;border:1px solid #e5a3a3;color:#8f0d0d;border-radius:12px;padding:12px 14px;font-size:15px;margin-bottom:12px;display:none}
+</style>
+</head>
+<body>
+<div class="demo">AMBIENTE DE DEMONSTRAÇÃO · dados fictícios, nada é cobrado nem enviado de verdade</div>
+<header>
+  <h1>Entregas em rota</h1>
+  <button id="refresh" onclick="buscar()">Atualizar</button>
+</header>
+<p class="sub" id="resumo">Carregando…</p>
+<div class="erro" id="erro"></div>
+<main id="lista"></main>
+<section class="feitos" id="feitosBox" style="display:none">
+  <h2>Entregues nesta sessão de demonstração</h2>
+  <div id="feitos"></div>
+</section>
+<script>
+const API = 'https://brasiliana.srv1597499.hstgr.cloud';
+const DTOK = 'demo-brasiliana-2026';
+let armados = {};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function yen(v){return '¥' + Number(v||0).toLocaleString('ja-JP')}
+function erro(msg){ const e=document.getElementById('erro'); if(msg){ e.textContent=msg; e.style.display='block'; } else e.style.display='none'; }
+function cartao(o){
+  const mapa = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(o.endereco || o.nome);
+  const tel = String(o.telefone || '').replace(/[^\d+]/g,'');
+  const armado = !!armados[o.id];
+  return '<article class="card">'
+    + '<div class="nome">' + esc(o.nome) + '</div>'
+    + (o.hora ? '<span class="hora">Horário: ' + esc(o.hora) + '</span>' : '')
+    + '<div class="end">' + esc(o.endereco || 'Endereço não informado') + '</div>'
+    + '<div class="itens">' + (o.itens || []).map(i => esc(i.nome) + ' ' + esc(i.tamanho) + ' x' + i.qtd).join('<br>') + '</div>'
+    + (o.obs ? '<div class="obs">Obs: ' + esc(o.obs) + '</div>' : '')
+    + '<div class="total">Total: ' + yen(o.total) + '</div>'
+    + '<div class="acoes">'
+    + '<a class="btn btn-mapa" href="' + mapa + '" target="_blank" rel="noopener">Abrir no mapa</a>'
+    + (tel ? '<a class="btn btn-tel" href="tel:' + tel + '">Ligar pro cliente</a>' : '<span></span>')
+    + '<button class="btn btn-entregue' + (armado ? ' armado' : '') + '" onclick="entregue(' + o.id + ')">' + (armado ? 'Toque de novo pra confirmar a entrega' : 'ENTREGUE') + '</button>'
+    + '</div></article>';
+}
+function buscar(){
+  erro('');
+  fetch(API + '/pedidos', { headers:{ 'X-Demo-Token':DTOK } })
+    .then(r => { if(!r.ok) throw 0; return r.json(); })
+    .then(data => {
+      const ps = (data.pedidos || []);
+      const rota = ps.filter(o => o.status === 'saiu' && o.tipo !== 'retirada');
+      const feitos = ps.filter(o => o.status === 'entregue' && o.tipo !== 'retirada');
+      document.getElementById('resumo').textContent = rota.length
+        ? rota.length + (rota.length === 1 ? ' entrega esperando o check de entregue.' : ' entregas esperando o check de entregue.')
+        : 'Nenhuma entrega em rota agora. Esta tela atualiza sozinha a cada 10 segundos.';
+      document.getElementById('lista').innerHTML = rota.length ? rota.map(cartao).join('') : '<div class="vazio">Nada pra entregar no momento.<br>Quando a loja marcar “Saiu para entrega”, o pedido aparece aqui.</div>';
+      const fb = document.getElementById('feitosBox');
+      if (feitos.length){ fb.style.display='block'; document.getElementById('feitos').innerHTML = feitos.map(o => '<div class="feito">Entregue · ' + esc(o.nome) + ' · ' + yen(o.total) + '</div>').join(''); }
+      else fb.style.display='none';
+    })
+    .catch(() => erro('Não consegui falar com o servidor agora. Toque em Atualizar pra tentar de novo.'));
+}
+function entregue(id){
+  if (!armados[id]){ armados[id] = true; buscar(); return; }
+  delete armados[id];
+  fetch(API + '/pedidos/' + id, { method:'PATCH', headers:{ 'Content-Type':'application/json', 'X-Demo-Token':DTOK }, body: JSON.stringify({ status:'entregue' }) })
+    .then(r => { if(!r.ok) throw 0; buscar(); })
+    .catch(() => erro('Não consegui marcar como entregue. Confira a internet e toque em Atualizar.'));
+}
+buscar();
+setInterval(buscar, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) buscar(); });
+</script>
+</body>
+</html>
