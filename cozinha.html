@@ -95,6 +95,8 @@ function cartao(o){
   const nx = NEXT[o.status];
   return '<article class="card"><div class="nome">' + esc(o.nome) + '</div>'
     + '<span class="tipo">' + (o.tipo === 'retirada' ? 'Retirada' : 'Delivery') + '</span>'
+    + (o.historico ? '<span class="tipo" style="background:' + (o.historico <= 1 ? '#d21a1a' : '#12805c') + ';color:#fff">' + (o.historico <= 1 ? 'PRIMEIRO PEDIDO' : 'Cliente conhecido · ' + o.historico + ' pedidos') + '</span>' : '')
+    + (o.bloqueado ? '<span class="tipo" style="background:#111;color:#fff">NÚMERO BLOQUEADO</span>' : '')
     + '<div class="itens">' + (o.itens || []).map(i => esc(i.nome) + ' ' + i.tamanho + ' x' + i.qtd).join('<br>') + '</div>'
     + (o.endereco ? '<div class="meta">' + esc(o.endereco) + '</div>' : '')
     + (o.obs ? '<div class="meta">Obs: ' + esc(o.obs) + '</div>' : '')
@@ -120,7 +122,8 @@ function mostrarAlerta(){
   const o = atual;
   document.getElementById('aBody').innerHTML = '<b>' + esc(o.nome) + '</b> · ' + (o.tipo === 'retirada' ? 'Retirada' : 'Delivery') + '<br>'
     + (o.itens || []).map(i => esc(i.nome) + ' ' + i.tamanho + ' x' + i.qtd).join('<br>')
-    + (o.endereco ? '<br>' + esc(o.endereco) : '');
+    + (o.endereco ? '<br>' + esc(o.endereco) : '')
+    + (o.historico ? '<br><b>' + (o.historico <= 1 ? 'PRIMEIRO PEDIDO deste número' : 'Cliente conhecido · ' + o.historico + ' pedidos') + '</b>' : '');
   document.getElementById('aTotal').textContent = yen(o.total || 0);
   document.getElementById('alerta').style.display = 'flex';
   bip(); clearInterval(bipTimer); bipTimer = setInterval(bip, 1600);

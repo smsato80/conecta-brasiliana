@@ -538,7 +538,7 @@
           ${state.funnel.map(f => `
             <div class="pipe-col">
               <h5>${f.label}</h5><div class="pv">${f.count} pedidos · ${f.value}</div>
-              ${state.clients.filter(c => c.stage === f.label).map(c => `<div class="pipe-card"><b>${c.name}</b><span>${c.interest}${(c._b||c._r)?' · pedido pelo site':''}</span></div>`).join('') || '<div class="small">Sem pedidos nesta etapa na demonstração.</div>'}
+              ${state.clients.filter(c => c.stage === f.label).map(c => `<div class="pipe-card"><b>${c.name}</b><span>${c.interest}${(c._b||c._r)?' · pedido pelo site':''}</span>${c._r && c._hist ? `<span style="display:inline-block;margin-top:4px;font-size:11px;font-weight:800;border-radius:999px;padding:2px 8px;color:#fff;background:${c._hist<=1?'#d21a1a':'#12805c'}">${c._hist<=1?'PRIMEIRO PEDIDO':'Cliente conhecido · '+c._hist+' pedidos'}</span>` : ''}${c._r && c._tel ? `<button onclick="${c._bloq?'unblockTel':'blockTel'}('${c._tel}')" style="display:block;margin-top:6px;font-size:11.5px;font-weight:700;border:1px solid #c0392b;color:#c0392b;background:#fff;border-radius:8px;padding:4px 8px;cursor:pointer">${c._bloq?'Desbloquear número':'Bloquear número'}</button>` : ''}</div>`).join('') || '<div class="small">Sem pedidos nesta etapa na demonstração.</div>'}
             </div>`).join('')}
         </div>
       </div>${foot()}`;
@@ -704,7 +704,7 @@
     remoteOrders.filter(o => (o.criado_em || '').slice(0,10) === tk).forEach(o => {
       const label = STAGE_MAP[o.status] || 'Novo pedido';
       const interest = (o.itens || []).map(i => i.nome + ' ' + i.tamanho + (i.qtd > 1 ? ' x' + i.qtd : '')).join(' + ') + (o.tipo === 'retirada' ? ' · retirada' : ' · delivery');
-      state.clients.unshift({ name:o.nome, phone:o.telefone || '', interest:interest, source:'Site', stage:label, _r:true });
+      state.clients.unshift({ name:o.nome, phone:o.telefone || '', interest:interest, source:'Site', stage:label, _r:true, _hist:o.historico || 0, _bloq:!!o.bloqueado, _tel:o.telefone || '' });
       if (!appliedRemote.stages[label]) appliedRemote.stages[label] = { c:0, v:0 };
       appliedRemote.stages[label].c += 1; appliedRemote.stages[label].v += (o.total || 0);
       appliedRemote.count += 1; appliedRemote.total += (o.total || 0);
@@ -770,7 +770,9 @@
       '<b>' + escHtml(o.nome) + '</b> · ' + (o.tipo === 'retirada' ? 'Retirada' : 'Delivery') + '<br>'
       + (o.itens || []).map(i => escHtml(i.nome) + ' ' + i.tamanho + ' x' + i.qtd).join('<br>')
       + (o.endereco ? '<br>' + escHtml(o.endereco) : '')
-      + (o.obs ? '<br>Obs: ' + escHtml(o.obs) : '');
+      + (o.obs ? '<br>Obs: ' + escHtml(o.obs) : '')
+      + (o.historico ? '<br><b>' + (o.historico <= 1 ? 'PRIMEIRO PEDIDO deste número' : 'Cliente conhecido · ' + o.historico + ' pedidos') + '</b>' : '')
+      + (o.bloqueado ? '<br><b>NÚMERO BLOQUEADO</b>' : '');
     document.getElementById('alertTotal').textContent = yenDot(o.total || 0);
     document.getElementById('alertOverlay').style.display = 'flex';
     beep();
@@ -790,6 +792,9 @@
         showNextAlert();
       });
   }
+  function blockTel(tel){ if(!tel) return; if(!confirm('Bloquear o número ' + tel + '? Ele não vai mais conseguir pedir pelo site.')) return; fetch(API + '/bloqueios', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-Demo-Token':DTOK }, body: JSON.stringify({ telefone: tel }) }).then(() => fetchPedidos(true)).catch(() => {}); }
+  function unblockTel(tel){ if(!tel) return; fetch(API + '/desbloquear', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-Demo-Token':DTOK }, body: JSON.stringify({ telefone: tel }) }).then(() => fetchPedidos(true)).catch(() => {}); }
+  window.blockTel = blockTel; window.unblockTel = unblockTel;
   function fetchPedidos(force){
     fetch(API + '/pedidos', { headers:{ 'X-Demo-Token':DTOK } })
       .then(r => { if (!r.ok) throw 0; return r.json(); })
