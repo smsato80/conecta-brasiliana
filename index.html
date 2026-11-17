@@ -462,7 +462,7 @@
         <div class="card panel">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
             <div><h3>Pedidos por etapa</h3><div class="small">Distribuição atual dos pedidos de hoje</div><div class="money">${state.stats.pipeline}</div></div>
-            <div class="pill">8 pedidos hoje</div>
+            <div class="pill">${state.stats.leads} pedidos hoje</div>
           </div>
           <div class="chart-row">
             <div class="convert-box"><strong>25%</strong><div class="small">Saiu ou entregue</div></div>
@@ -538,7 +538,7 @@
           ${state.funnel.map(f => `
             <div class="pipe-col">
               <h5>${f.label}</h5><div class="pv">${f.count} pedidos · ${f.value}</div>
-              ${state.clients.filter(c => c.stage === f.label).map(c => `<div class="pipe-card"><b>${c.name}</b><span>${c.interest}</span></div>`).join('') || '<div class="small">Sem pedidos nesta etapa na demonstração.</div>'}
+              ${state.clients.filter(c => c.stage === f.label).map(c => `<div class="pipe-card"><b>${c.name}</b><span>${c.interest}${c._b?' · pedido pelo site':''}</span></div>`).join('') || '<div class="small">Sem pedidos nesta etapa na demonstração.</div>'}
             </div>`).join('')}
         </div>
       </div>${foot()}`;
@@ -618,7 +618,39 @@
     platform:{ title:'Plataforma', render:() => renderGeneric('Plataforma','Segurança, empresas, auditoria e estado do ambiente de demonstração.') }
   };
 
+
+  // Ponte local da demonstração: pedidos feitos na amostra (aba Site), neste mesmo navegador.
+  let appliedBridge = { count:0, total:0 };
+  function bridgeList(){
+    try {
+      const raw = JSON.parse(localStorage.getItem('brasiliana-pedidos-demo') || '[]');
+      if (!Array.isArray(raw)) return [];
+      const d = new Date(); const today = d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
+      return raw.filter(o => o && o.nome && (!o.dia || o.dia === today));
+    } catch(e){ return []; }
+  }
+  function yenDot(v){ return '¥ ' + String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+  function refreshBridge(){
+    state.clients = state.clients.filter(x => !x._b);
+    state.funnel[0].count -= appliedBridge.count;
+    state.stats.leads -= appliedBridge.count;
+    const baseTotal = parseInt(state.stats.pipeline.replace(/[^0-9]/g,''), 10) - appliedBridge.total;
+    const baseFunnel = parseInt(state.funnel[0].value.replace(/[^0-9]/g,''), 10) - appliedBridge.total;
+    appliedBridge = { count:0, total:0 };
+    const list = bridgeList();
+    list.forEach(o => {
+      const interest = (o.itens || []).map(i => i.n + ' ' + i.size).join(' + ') + (o.modo === 'retirada' ? ' · retirada' : ' · delivery');
+      state.clients.unshift({ name:o.nome, phone:o.tel || '', interest:interest, source:'Site', stage:'Novo pedido', _b:true });
+      appliedBridge.count += 1; appliedBridge.total += (o.total || 0);
+    });
+    state.funnel[0].count += appliedBridge.count;
+    state.funnel[0].value = yenDot(baseFunnel + appliedBridge.total);
+    state.stats.leads += appliedBridge.count;
+    state.stats.pipeline = yenDot(baseTotal + appliedBridge.total);
+  }
+
   function renderPage(){
+    refreshBridge();
     const p = pages[state.page] || pages.overview;
     crumbTitle.textContent = p.title;
     pageRoot.innerHTML = p.render();
