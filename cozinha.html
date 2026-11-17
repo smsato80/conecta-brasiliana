@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cozinha · Brasiliana Pizzaria · Conecta+</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0c0f0e;color:#f2f5f3;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 18px;background:#111714;border-bottom:2px solid #1f2a25}
+  header h1{font-size:clamp(20px,3.4vw,30px)}
+  header .loja{color:#8fd8c2;font-weight:700}
+  #relogio{margin-left:auto;font-size:clamp(22px,4vw,36px);font-weight:800;font-variant-numeric:tabular-nums}
+  .demo{background:#5c4300;color:#ffe9a8;text-align:center;font-size:13.5px;padding:7px 10px;font-weight:600}
+  #somBtn{background:#12805c;color:#fff;border:none;border-radius:999px;padding:11px 18px;font-size:15px;font-weight:700;cursor:pointer}
+  main{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:14px}
+  @media (max-width:900px){main{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:560px){main{grid-template-columns:1fr}}
+  .col h2{font-size:clamp(16px,2.4vw,21px);padding:10px 12px;border-radius:12px;margin-bottom:10px;text-align:center}
+  .col.novo h2{background:#c11212}
+  .col.forno h2{background:#b96a00}
+  .col.saiu h2{background:#1455a5}
+  .col.entregue h2{background:#2c6e3f}
+  .card{background:#171d1a;border:2px solid #2a352f;border-radius:16px;padding:14px;margin-bottom:12px}
+  .col.novo .card{border-color:#c11212}
+  .card .nome{font-size:clamp(19px,2.8vw,25px);font-weight:800}
+  .card .tipo{display:inline-block;margin-top:4px;font-size:13.5px;font-weight:700;padding:3px 10px;border-radius:999px;background:#24312b;color:#a9e6d2}
+  .card .itens{margin-top:9px;font-size:clamp(16px,2.4vw,20px);line-height:1.5}
+  .card .meta{margin-top:7px;color:#b9c6c0;font-size:14.5px;line-height:1.45;word-break:break-word}
+  .card .total{margin-top:8px;font-size:clamp(19px,2.8vw,24px);font-weight:800;color:#ffd76a}
+  .card button{margin-top:11px;width:100%;border:none;border-radius:12px;padding:14px;font-size:17.5px;font-weight:800;cursor:pointer;color:#fff}
+  .b-novo{background:#c11212}.b-forno{background:#b96a00}.b-saiu{background:#1455a5}.b-entregue{background:#2c6e3f}
+  .vazio{color:#77847d;text-align:center;padding:16px 6px;font-size:15px}
+  @keyframes pisca{0%,100%{background:#8f0d0d}50%{background:#d21a1a}}
+  #alerta{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:16px;animation:pisca 1s infinite}
+  #alerta .box{background:#fff;color:#141414;border-radius:22px;max-width:620px;width:100%;padding:28px 24px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  #alerta h1{font-size:clamp(38px,10vw,64px);color:#c11212}
+  #alerta .a-itens{font-size:clamp(18px,5vw,24px);line-height:1.55;margin-top:10px}
+  #alerta .a-total{font-size:clamp(26px,6.5vw,36px);font-weight:800;margin-top:8px}
+  #alerta button{margin-top:18px;width:100%;background:#12805c;color:#fff;border:none;border-radius:14px;padding:18px;font-size:21px;font-weight:800;cursor:pointer}
+  footer{padding:10px 18px 18px;color:#77847d;font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<div class="demo">AMBIENTE DE DEMONSTRAÇÃO · Pedidos de teste feitos pelo site da amostra. Nenhum pedido aqui é da loja de verdade.</div>
+<header>
+  <h1>Cozinha · <span class="loja">Brasiliana Pizzaria</span></h1>
+  <button id="somBtn">Ativar som</button>
+  <div id="relogio">--:--</div>
+</header>
+<main>
+  <section class="col novo"><h2>NOVO PEDIDO</h2><div id="c-novo"></div></section>
+  <section class="col forno"><h2>NO FORNO</h2><div id="c-no_forno"></div></section>
+  <section class="col saiu"><h2>SAIU PARA ENTREGA</h2><div id="c-saiu"></div></section>
+  <section class="col entregue"><h2>ENTREGUE</h2><div id="c-entregue"></div></section>
+</main>
+<footer>Conecta+ · Tela de cozinha da demonstração · Os pedidos chegam pelo servidor quando alguém pede no site da amostra, em qualquer aparelho.</footer>
+
+<div id="alerta"><div class="box">
+  <h1>NOVO PEDIDO</h1>
+  <div class="a-itens" id="aBody"></div>
+  <div class="a-total" id="aTotal"></div>
+  <button id="aAceitar">Aceitar e mandar pro forno</button>
+</div></div>
+
+<script>
+const API = 'https://brasiliana.srv1597499.hstgr.cloud';
+const DTOK = 'demo-brasiliana-2026';
+const NEXT = { novo:{to:'no_forno', label:'Aceitar e mandar pro forno', cls:'b-novo'},
+               no_forno:{to:'saiu', label:'Pronto: saiu para entrega', cls:'b-forno'},
+               saiu:{to:'entregue', label:'Marcar como entregue', cls:'b-saiu'} };
+let pedidos = [], fila = [], atual = null, som = false, ctx = null, bipTimer = null;
+let vistos = new Set(JSON.parse(localStorage.getItem('brasiliana-cozinha-vistos') || '[]'));
+const yen = v => '¥ ' + String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function relogio(){ const d = new Date(); document.getElementById('relogio').textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0'); }
+setInterval(relogio, 1000); relogio();
+
+function bip(){
+  if (!som) return;
+  try {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880; g.gain.setValueAtTime(0.18, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.5);
+  } catch(e){}
+}
+document.getElementById('somBtn').addEventListener('click', function(){
+  som = !som; this.textContent = som ? 'Som ligado' : 'Ativar som'; if (som) bip();
+});
+
+function cartao(o){
+  const nx = NEXT[o.status];
+  return '<article class="card"><div class="nome">' + esc(o.nome) + '</div>'
+    + '<span class="tipo">' + (o.tipo === 'retirada' ? 'Retirada' : 'Delivery') + '</span>'
+    + '<div class="itens">' + (o.itens || []).map(i => esc(i.nome) + ' ' + i.tamanho + ' x' + i.qtd).join('<br>') + '</div>'
+    + (o.endereco ? '<div class="meta">' + esc(o.endereco) + '</div>' : '')
+    + (o.obs ? '<div class="meta">Obs: ' + esc(o.obs) + '</div>' : '')
+    + (o.hora ? '<div class="meta">Horário: ' + esc(o.hora) + '</div>' : '')
+    + '<div class="total">' + yen(o.total || 0) + '</div>'
+    + (nx ? '<button class="' + nx.cls + '" onclick="avancar(' + o.id + ',\'' + nx.to + '\')">' + nx.label + '</button>' : '')
+    + '</article>';
+}
+function render(){
+  ['novo','no_forno','saiu','entregue'].forEach(st => {
+    const el = document.getElementById('c-' + st);
+    const list = pedidos.filter(o => o.status === st);
+    el.innerHTML = list.length ? list.map(cartao).join('') : '<div class="vazio">Nada aqui agora.</div>';
+  });
+}
+function avancar(id, to){
+  fetch(API + '/pedidos/' + id, { method:'PATCH', headers:{ 'Content-Type':'application/json', 'X-Demo-Token':DTOK }, body: JSON.stringify({ status: to }) })
+    .then(() => buscar()).catch(() => {});
+}
+function mostrarAlerta(){
+  if (atual || !fila.length) return;
+  atual = fila.shift();
+  const o = atual;
+  document.getElementById('aBody').innerHTML = '<b>' + esc(o.nome) + '</b> · ' + (o.tipo === 'retirada' ? 'Retirada' : 'Delivery') + '<br>'
+    + (o.itens || []).map(i => esc(i.nome) + ' ' + i.tamanho + ' x' + i.qtd).join('<br>')
+    + (o.endereco ? '<br>' + esc(o.endereco) : '');
+  document.getElementById('aTotal').textContent = yen(o.total || 0);
+  document.getElementById('alerta').style.display = 'flex';
+  bip(); clearInterval(bipTimer); bipTimer = setInterval(bip, 1600);
+}
+document.getElementById('aAceitar').addEventListener('click', function(){
+  if (!atual) return;
+  const id = atual.id;
+  vistos.add(id);
+  try { localStorage.setItem('brasiliana-cozinha-vistos', JSON.stringify([...vistos].slice(-100))); } catch(e){}
+  atual = null;
+  clearInterval(bipTimer);
+  document.getElementById('alerta').style.display = 'none';
+  avancar(id, 'no_forno');
+  setTimeout(mostrarAlerta, 300);
+});
+function buscar(){
+  fetch(API + '/pedidos', { headers:{ 'X-Demo-Token':DTOK } })
+    .then(r => { if (!r.ok) throw 0; return r.json(); })
+    .then(data => {
+      pedidos = data.pedidos || [];
+      pedidos.filter(o => o.status === 'novo' && !vistos.has(o.id) && !fila.some(q => q.id === o.id) && (!atual || atual.id !== o.id))
+        .reverse().forEach(o => fila.push(o));
+      render();
+      mostrarAlerta();
+    })
+    .catch(() => {});
+}
+buscar();
+setInterval(buscar, 4000);
+</script>
+</body>
+</html>

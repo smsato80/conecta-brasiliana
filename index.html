@@ -538,7 +538,7 @@
           ${state.funnel.map(f => `
             <div class="pipe-col">
               <h5>${f.label}</h5><div class="pv">${f.count} pedidos · ${f.value}</div>
-              ${state.clients.filter(c => c.stage === f.label).map(c => `<div class="pipe-card"><b>${c.name}</b><span>${c.interest}${c._b?' · pedido pelo site':''}</span></div>`).join('') || '<div class="small">Sem pedidos nesta etapa na demonstração.</div>'}
+              ${state.clients.filter(c => c.stage === f.label).map(c => `<div class="pipe-card"><b>${c.name}</b><span>${c.interest}${(c._b||c._r)?' · pedido pelo site':''}</span></div>`).join('') || '<div class="small">Sem pedidos nesta etapa na demonstração.</div>'}
             </div>`).join('')}
         </div>
       </div>${foot()}`;
@@ -651,6 +651,7 @@
 
   function renderPage(){
     refreshBridge();
+    refreshRemote();
     const p = pages[state.page] || pages.overview;
     crumbTitle.textContent = p.title;
     pageRoot.innerHTML = p.render();
@@ -671,6 +672,149 @@
   document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
   document.getElementById('logoutBtn').addEventListener('click', goLogin);
   document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', () => { state.page = el.dataset.page; renderPage(); }));
+
+
+  // ===== Backend de demonstração: pedidos da amostra chegam pelo servidor =====
+  const API = 'https://brasiliana.srv1597499.hstgr.cloud';
+  const DTOK = 'demo-brasiliana-2026';
+  const STAGE_MAP = { novo:'Novo pedido', no_forno:'No forno', saiu:'Saiu para entrega', entregue:'Entregue' };
+  let remoteOrders = [];
+  let appliedRemote = { stages:{}, count:0, total:0 };
+  let lastSignature = '';
+  let alertQueue = [];
+  let alertCurrent = null;
+  let soundOn = false;
+  let audioCtx = null;
+  let beepTimer = null;
+  let seenAlert = new Set(JSON.parse(localStorage.getItem('brasiliana-alert-vistos') || '[]'));
+
+  function escHtml(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function refreshRemote(){
+    state.clients = state.clients.filter(x => !x._r);
+    for (const k in appliedRemote.stages){
+      const f = state.funnel.find(x => x.label === k);
+      if (f){ f.count -= appliedRemote.stages[k].c; f.value = yenDot(parseInt(f.value.replace(/[^0-9]/g,''), 10) - appliedRemote.stages[k].v); }
+    }
+    state.stats.leads -= appliedRemote.count;
+    const baseTotal = parseInt(state.stats.pipeline.replace(/[^0-9]/g,''), 10) - appliedRemote.total;
+    appliedRemote = { stages:{}, count:0, total:0 };
+    const d = new Date();
+    const tk = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    remoteOrders.filter(o => (o.criado_em || '').slice(0,10) === tk).forEach(o => {
+      const label = STAGE_MAP[o.status] || 'Novo pedido';
+      const interest = (o.itens || []).map(i => i.nome + ' ' + i.tamanho + (i.qtd > 1 ? ' x' + i.qtd : '')).join(' + ') + (o.tipo === 'retirada' ? ' · retirada' : ' · delivery');
+      state.clients.unshift({ name:o.nome, phone:o.telefone || '', interest:interest, source:'Site', stage:label, _r:true });
+      if (!appliedRemote.stages[label]) appliedRemote.stages[label] = { c:0, v:0 };
+      appliedRemote.stages[label].c += 1; appliedRemote.stages[label].v += (o.total || 0);
+      appliedRemote.count += 1; appliedRemote.total += (o.total || 0);
+      const f = state.funnel.find(x => x.label === label);
+      if (f){ f.count += 1; f.value = yenDot(parseInt(f.value.replace(/[^0-9]/g,''), 10) + (o.total || 0)); }
+    });
+    state.stats.leads += appliedRemote.count;
+    state.stats.pipeline = yenDot(baseTotal + appliedRemote.total);
+  }
+
+  function ensureAlertDom(){
+    if (document.getElementById('alertOverlay')) return;
+    const st = document.createElement('style');
+    st.textContent = '@keyframes novopedidoPulse{0%,100%{background:#8f0d0d}50%{background:#c11212}}'
+      + '#alertOverlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;padding:18px;animation:novopedidoPulse 1s infinite}'
+      + '#alertOverlay .abox{background:#fff;border-radius:20px;max-width:560px;width:100%;padding:26px 22px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.45)}'
+      + '#alertOverlay h1{margin:0 0 6px;font-size:clamp(34px,9vw,54px);color:#c11212;letter-spacing:.01em}'
+      + '#alertOverlay .aitems{font-size:clamp(17px,4.6vw,21px);line-height:1.55;margin:10px 0;color:#222}'
+      + '#alertOverlay .atotal{font-size:clamp(24px,6vw,32px);font-weight:800;color:#111}'
+      + '#alertOverlay .aaceitar{margin-top:16px;background:#12805c;color:#fff;border:none;border-radius:14px;padding:16px 22px;font-size:20px;font-weight:800;width:100%;cursor:pointer}'
+      + '#alertOverlay .asom{margin-top:10px;background:#fff;color:#555;border:1.5px solid #bbb;border-radius:12px;padding:10px 16px;font-size:15px;cursor:pointer}'
+      + '#soundBtn{position:fixed;right:14px;bottom:14px;z-index:9000;background:#0d4a45;color:#fff;border:none;border-radius:999px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.3)}';
+    document.head.appendChild(st);
+    document.body.insertAdjacentHTML('beforeend',
+      '<div id="alertOverlay"><div class="abox">'
+      + '<h1>NOVO PEDIDO</h1>'
+      + '<div class="aitems" id="alertBody"></div>'
+      + '<div class="atotal" id="alertTotal"></div>'
+      + '<button class="aaceitar" id="alertAccept">Aceitar e mandar pro forno</button>'
+      + '<br><button class="asom" id="alertSound">Ativar som do alerta</button>'
+      + '<div style="margin-top:8px;font-size:12.5px;color:#888">Demonstração: pedido de teste feito pelo site da amostra.</div>'
+      + '</div></div>'
+      + '<button id="soundBtn" style="display:none">Som do alerta: desligado</button>');
+    document.getElementById('alertAccept').addEventListener('click', acceptAlert);
+    const tog = () => { soundOn = !soundOn; if (soundOn) beep(); syncSoundBtns(); };
+    document.getElementById('alertSound').addEventListener('click', tog);
+    document.getElementById('soundBtn').addEventListener('click', tog);
+  }
+  function syncSoundBtns(){
+    const t = soundOn ? 'Som do alerta: ligado' : 'Som do alerta: desligado';
+    const b = document.getElementById('soundBtn'); if (b) b.textContent = t;
+    const a = document.getElementById('alertSound'); if (a) a.textContent = soundOn ? 'Som ligado' : 'Ativar som do alerta';
+  }
+  function beep(){
+    if (!soundOn) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = 880; o.type = 'sine';
+      g.gain.setValueAtTime(0.18, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + 0.5);
+    } catch(e){}
+  }
+  function showNextAlert(){
+    if (alertCurrent || !alertQueue.length) return;
+    if (appView.classList.contains('hidden')) return;
+    alertCurrent = alertQueue.shift();
+    ensureAlertDom();
+    const o = alertCurrent;
+    document.getElementById('alertBody').innerHTML =
+      '<b>' + escHtml(o.nome) + '</b> · ' + (o.tipo === 'retirada' ? 'Retirada' : 'Delivery') + '<br>'
+      + (o.itens || []).map(i => escHtml(i.nome) + ' ' + i.tamanho + ' x' + i.qtd).join('<br>')
+      + (o.endereco ? '<br>' + escHtml(o.endereco) : '')
+      + (o.obs ? '<br>Obs: ' + escHtml(o.obs) : '');
+    document.getElementById('alertTotal').textContent = yenDot(o.total || 0);
+    document.getElementById('alertOverlay').style.display = 'flex';
+    beep();
+    clearInterval(beepTimer); beepTimer = setInterval(beep, 1600);
+  }
+  function acceptAlert(){
+    const o = alertCurrent; if (!o) return;
+    seenAlert.add(o.id);
+    try { localStorage.setItem('brasiliana-alert-vistos', JSON.stringify([...seenAlert].slice(-100))); } catch(e){}
+    fetch(API + '/pedidos/' + o.id, { method:'PATCH', headers:{ 'Content-Type':'application/json', 'X-Demo-Token':DTOK }, body: JSON.stringify({ status:'no_forno' }) })
+      .catch(() => {})
+      .finally(() => {
+        alertCurrent = null;
+        clearInterval(beepTimer);
+        document.getElementById('alertOverlay').style.display = 'none';
+        fetchPedidos(true);
+        showNextAlert();
+      });
+  }
+  function fetchPedidos(force){
+    fetch(API + '/pedidos', { headers:{ 'X-Demo-Token':DTOK } })
+      .then(r => { if (!r.ok) throw 0; return r.json(); })
+      .then(data => {
+        const list = (data.pedidos || []);
+        const novos = list.filter(o => o.status === 'novo' && !seenAlert.has(o.id) && !alertQueue.some(q => q.id === o.id) && (!alertCurrent || alertCurrent.id !== o.id));
+        novos.reverse().forEach(o => alertQueue.push(o));
+        remoteOrders = list;
+        const sig = list.map(o => o.id + ':' + o.status).join(',');
+        const changed = sig !== lastSignature;
+        lastSignature = sig;
+        if ((changed || force) && !appView.classList.contains('hidden')){
+          const y = window.scrollY;
+          renderPage();
+          window.scrollTo(0, y);
+        }
+        const sb = document.getElementById('soundBtn');
+        if (sb) sb.style.display = appView.classList.contains('hidden') ? 'none' : 'block';
+        showNextAlert();
+      })
+      .catch(() => {});
+  }
+  ensureAlertDom();
+  fetchPedidos(false);
+  setInterval(() => fetchPedidos(false), 4000);
 
   if (location.hash === '#app') goApp();
 })();
